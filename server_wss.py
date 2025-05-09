@@ -28,11 +28,17 @@ logger.add(sys.stderr, format=log_format, level="ERROR", filter=lambda record: r
 
 
 class Config(BaseSettings):
+    ##说话人验证的阈值，用于确定说话人验证结果的置信度
     sv_thr: float = Field(0.3, description="Speaker verification threshold")
+    ##每个音频块的大小，单位为毫秒，用于分割音频数据 这里设置为300ms
     chunk_size_ms: int = Field(300, description="Chunk size in milliseconds")
+    ##音频的采样率，单位为赫兹，用于对音频数据进行采样
     sample_rate: int = Field(16000, description="Sample rate in Hz")
+    ##音频数据的位深度，确定每个音频样本的位数
     bit_depth: int = Field(16, description="Bit depth")
+    ##音频通道数
     channels: int = Field(1, description="Number of audio channels")
+    ##平均对数概率的阈值，确定自动语音识别结果的置信度
     avg_logprob_thr: float = Field(-0.25, description="average logprob threshold")
 
 config = Config()
@@ -107,7 +113,6 @@ def format_str(s):
 		s = s.replace(sptk, emoji_dict[sptk])
 	return s
 
-
 def format_str_v2(s):
 	sptk_dict = {}
 	for sptk in emoji_dict:
@@ -157,11 +162,13 @@ def contains_chinese_english_number(s: str) -> bool:
     return bool(re.search(r'[\u4e00-\u9fffA-Za-z0-9]', s))
 
 
+##完成语音识别，验证说话人的身份
 sv_pipeline = pipeline(
     task='speaker-verification',
     model='iic/speech_eres2net_large_sv_zh-cn_3dspeaker_16k',
     model_revision='v1.0.0'
 )
+
 
 asr_pipeline = pipeline(
     task=Tasks.auto_speech_recognition,
@@ -171,6 +178,8 @@ asr_pipeline = pipeline(
     disable_update=True
 )
 
+
+##完成语音识别 实现语音转文字
 model_asr = AutoModel(
     model="iic/SenseVoiceSmall",
     trust_remote_code=True,
@@ -179,6 +188,7 @@ model_asr = AutoModel(
     disable_update=True
 )
 
+##完成语音活动检测
 model_vad = AutoModel(
     model="fsmn-vad",
     model_revision="v2.0.4",
@@ -189,12 +199,14 @@ model_vad = AutoModel(
 )
 
 reg_spks_files = [
-    "speaker/speaker1_a_cn_16k.wav"
+    "speaker/speaker_me.wav"
 ]
 
+##初始化说话人相关信息
 def reg_spk_init(files):
     reg_spk = {}
     for f in files:
+        ##data记录音频数据，sr记录采样率
         data, sr = sf.read(f, dtype="float32")
         k, _ = os.path.splitext(os.path.basename(f))
         reg_spk[k] = {
@@ -205,6 +217,13 @@ def reg_spk_init(files):
 
 reg_spks = reg_spk_init(reg_spks_files)
 
+"""
+完成语音识别，验证说话人的身份
+:param audio: 音频数据 
+:param sv_thr: 说话人验证的阈值 
+:returns: hit 是否验证通过 (Boolean) 
+          k  验证通过的说话人名称 (String)
+"""
 def speaker_verify(audio, sv_thr):
     hit = False
     for k, v in reg_spks.items():
@@ -215,6 +234,14 @@ def speaker_verify(audio, sv_thr):
     return hit, k
 
 
+'''
+完成语音识别，实现语音转文字
+:param audio: 音频数据 
+:param lang: 语言类型 
+:param cache: 缓存数据 
+:param use_itn: 是否使用反标准化 默认false
+:returns: result 语音识别结果 (List)
+'''
 def asr(audio, lang, cache, use_itn=False):
     # with open('test.pcm', 'ab') as f:
     #     logger.debug(f'write {f.write(audio)} bytes to `test.pcm`')
@@ -277,10 +304,13 @@ class TranscriptionResponse(BaseModel):
 async def websocket_endpoint(websocket: WebSocket):
     try:
         query_params = parse_qs(websocket.scope['query_string'].decode())
+        ##身份验证，默认false不开启 小写后存在列表中返回true，否则返回false
         sv = query_params.get('sv', ['false'])[0].lower() in ['true', '1', 't', 'y', 'yes']
+        ##语言类型，默认自动识别
         lang = query_params.get('lang', ['auto'])[0].lower()
         
         await websocket.accept()
+        ##音频块的大小
         chunk_size = int(config.chunk_size_ms * config.sample_rate / 1000)
         audio_buffer = np.array([], dtype=np.float32)
         audio_vad = np.array([], dtype=np.float32)
@@ -290,17 +320,17 @@ async def websocket_endpoint(websocket: WebSocket):
         last_vad_beg = last_vad_end = -1
         offset = 0
         hit = False
-        
+        ##初始化一个空的字节缓冲区，用于存储接收到的音频数据。
         buffer = b""
         while True:
             data = await websocket.receive_bytes()
             # logger.info(f"received {len(data)} bytes")
 
-            
             buffer += data
             if len(buffer) < 2:
                 continue
-                
+            
+            ##转化音频数据格式
             audio_buffer = np.append(
                 audio_buffer, 
                 np.frombuffer(buffer[:len(buffer) - (len(buffer) % 2)], dtype=np.int16).astype(np.float32) / 32767.0
@@ -341,6 +371,10 @@ async def websocket_endpoint(websocket: WebSocket):
                         )
                         await websocket.send_json(response.model_dump())
 
+
+                '''
+                流程：实现语音检测-->语音识别转文字
+                '''
                 res = model_vad.generate(input=chunk, cache=cache, is_final=False, chunk_size=config.chunk_size_ms)
                 # logger.info(f"vad inference: {res}")
                 if len(res[0]["value"]):
@@ -385,6 +419,8 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.info("Cleaned up resources after WebSocket disconnect")
 
 
+##配置和运行FastAPI应用
+##如果直接运行，则默认监听端口为27000，否则跳过配置
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the FastAPI app with a specified port.")
     parser.add_argument('--port', type=int, default=27000, help='Port number to run the FastAPI app on.')

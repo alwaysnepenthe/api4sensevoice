@@ -1,35 +1,145 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <meta charset="utf-8">
-    <title>WebSocket Audio Transcription</title>
+    <title>The Audi Voice Module</title>
     <style>
-        #transcriptionResult {
-            white-space: pre-wrap; /* Preserve whitespace and line breaks */
-            background-color: #f5f5f5;
-            padding: 10px;
-            border: 1px solid #ddd;
+        /* 背景动画 */
+        @keyframes gradientBackground {
+            0% {
+                background-position: 0% 50%;
+            }
+            50% {
+                background-position: 100% 50%;
+            }
+            100% {
+                background-position: 0% 50%;
+            }
+        }
+
+        body {
+            font-family: 'Orbitron', sans-serif;
+            background: linear-gradient(135deg, #e0f7ff, #b3e5fc, #81d4fa);
+            background-size: 200% 200%;
+            animation: gradientBackground 10s ease infinite;
+            color: #01579b;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            flex-direction: column;
+        }
+
+        .container {
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #4fc3f7;
+            box-shadow: 0 0 20px rgba(79, 195, 247, 0.3);
+            max-width: 600px;
+            width: 100%;
+            backdrop-filter: blur(5px);
+        }
+
+        #recordButton {
+            background-color: #4fc3f7;
+            color: #01579b;
+            border: none;
+            padding: 10px 20px;
             border-radius: 5px;
-            font-family: monospace;
+            cursor: pointer;
+            font-size: 16px;
+            font-family: 'Orbitron', sans-serif;
+            transition: background-color 0.3s ease, box-shadow 0.3s ease;
         }
+
         #recordButton.recording {
-            background-color: red;
-            color: white;
+            background-color: #ff4081;
+            color: #ffffff;
         }
+
+        #recordButton:hover {
+            background-color: #29b6f6;
+            box-shadow: 0 0 10px rgba(41, 182, 246, 0.5);
+        }
+
+        #recordButton.recording:hover {
+            background-color: #f50057;
+            box-shadow: 0 0 10px rgba(245, 0, 87, 0.5);
+        }
+
+        label {
+            display: block;
+            margin: 10px 0 5px;
+            font-weight: bold;
+            color: #01579b;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #4fc3f7;
+            border-radius: 5px;
+            font-size: 14px;
+            background-color: rgba(255, 255, 255, 0.8);
+            color: #01579b;
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        input[type="checkbox"] {
+            margin-right: 10px;
+            accent-color: #4fc3f7;
+        }
+
+        hr {
+            border: 0;
+            height: 1px;
+            background: linear-gradient(to right, transparent, #4fc3f7, transparent);
+            margin: 20px 0;
+        }
+
+        #transcriptionResult {
+            white-space: pre-wrap;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 15px;
+            border: 1px solid #4fc3f7;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.5;
+            max-height: 300px;
+            overflow-y: auto;
+            color: #01579b;
+        }
+
+        .title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            text-align: center;
+            color: #01579b;
+            text-shadow: 0 0 10px rgba(79, 195, 247, 0.5);
+        }
+
+        /* 引入科幻字体 */
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
     </style>
 </head>
+
 <body>
-    <div>
+    <div class="container">
+        <div class="title">The Audi Voice Module</div>
         <button id="recordButton">Start Recording</button>
-        <label>
-            language: 
-            <input id="lang" type="text" value="auto" />
-        </label>
+        <label for="lang">Language:</label>
+        <input id="lang" type="text" value="auto" placeholder="Enter language code (e.g., 'en', 'es')" />
         <label>
             <input type="checkbox" id="speakerVerification"> Speaker Verification
         </label>
         <hr />
-        Transcription result will be displayed below:
+        <p>Transcription result will be displayed below:</p>
         <p id="transcriptionResult"></p>
     </div>
 </body>
@@ -42,7 +152,7 @@
     var timeInte = null;
     var isRecording = false;
 
-    recordButton.onclick = function() {
+    recordButton.onclick = function () {
         if (!isRecording) {
             startRecording();
         } else {
@@ -55,7 +165,7 @@
         var speakerVerificationCheckbox = document.getElementById('speakerVerification');
         var sv = speakerVerificationCheckbox.checked ? 1 : 0;
         var lang = document.getElementById("lang").value
-        // Construct the query parameters
+        // 构建查询参数 Construct the query parameters
         var queryParams = [];
         if (lang) {
             queryParams.push(`lang=${lang}`);
@@ -65,21 +175,23 @@
         }
         var queryString = queryParams.length > 0 ? `?${queryParams.join('&')}` : '';
 
-        ws = new WebSocket(`wss://your_wss_server_address/ws/transcribe${queryString}`);
+        ws = new WebSocket(`ws://localhost:27000/ws/transcribe${queryString}`);
+        
+        //发送和接收二进制数据
         ws.binaryType = 'arraybuffer';
 
-        ws.onopen = function(event) {
+        ws.onopen = function (event) {
             console.log('WebSocket connection established');
             record.start();
-            timeInte = setInterval(function() {
-                if(ws.readyState === 1) {
+            timeInte = setInterval(function () {
+                if (ws.readyState === 1) {
                     var audioBlob = record.getBlob();
                     console.log('Blob size: ', audioBlob.size);
-
                     // Read the Blob content for debugging
                     var reader = new FileReader();
-                    reader.onloadend = function() {
+                    reader.onloadend = function () {
                         console.log('Blob content: ', new Uint8Array(reader.result));
+                        //传递语音数据到服务器 Send the audio data to the server
                         ws.send(audioBlob);
                         console.log('Sending audio data');
                         record.clear();
@@ -89,7 +201,8 @@
             }, 500);
         };
 
-        ws.onmessage = function(evt) {
+        //接收到消息的数据并输出到页面
+        ws.onmessage = function (evt) {
             console.log('Received message: ' + evt.data);
             try {
                 resJson = JSON.parse(evt.data)
@@ -103,11 +216,11 @@
             }
         };
 
-        ws.onclose = function() {
+        ws.onclose = function () {
             console.log('WebSocket connection closed');
         };
 
-        ws.onerror = function(error) {
+        ws.onerror = function (error) {
             console.error('WebSocket error: ' + error);
         };
 
@@ -132,42 +245,49 @@
         record = rec;
     }
 
+    // Check if the browser supports the Web Audio API and the getUserMedia method
+    //申请用户的麦克风权限，同意便初始化Recorder
     if (!navigator.getUserMedia) {
         alert('Your browser does not support audio input');
     } else {
         navigator.getUserMedia(
+            //媒体约束
             { audio: true },
-            function(mediaStream) {
+            //成功获取麦克风权限回调函数
+            function (mediaStream) {
                 init(new Recorder(mediaStream));
             },
-            function(error) {
+            //失败获取麦克风权限回调函数
+            function (error) {
                 console.log(error);
             }
         );
     }
 
-    var Recorder = function(stream) {
-        var sampleBits = 16; // Sample bits
-        var inputSampleRate = 48000; // Input sample rate
-        var outputSampleRate = 16000; // Output sample rate
-        var channelCount = 1; // Single channel
+    var Recorder = function (stream) {
+        var sampleBits = 16; //采样位数 Sample bits
+        var inputSampleRate = 48000; //输入采样率 Input sample rate
+        var outputSampleRate = 16000; //输出采样率 Output sample rate
+        var channelCount = 1; //单声道 Single channel
         var context = new AudioContext();
+        //用于从媒体（麦克风输入）获取音频数据 Media (microphone input) to get audio data
         var audioInput = context.createMediaStreamSource(stream);
         var recorder = context.createScriptProcessor(4096, channelCount, channelCount);
-        var audioData = {
+        var audioData = {////用于存储录音数据 Audio data storage
             size: 0,
             buffer: [],
             inputSampleRate: inputSampleRate,
             inputSampleBits: sampleBits,
-            clear: function() {
+            clear: function () {
                 this.buffer = [];
                 this.size = 0;
             },
-            input: function(data) {
+            input: function (data) {
                 this.buffer.push(new Float32Array(data));
                 this.size += data.length;
             },
-            encodePCM: function() {
+            //将录音数据编码为PCM格式并返回Blob对象 Encode the recorded data as PCM format and return a Blob object
+            encodePCM: function () {
                 var bytes = new Float32Array(this.size);
                 var offset = 0;
                 for (var i = 0; i < this.buffer.length; i++) {
@@ -186,23 +306,24 @@
             }
         };
 
-        this.start = function() {
+        this.start = function () {
             audioInput.connect(recorder);
             recorder.connect(context.destination);
         };
 
-        this.stop = function() {
+        this.stop = function () {
             recorder.disconnect();
         };
 
-        this.getBlob = function() {
+        this.getBlob = function () {
             return audioData.encodePCM();
         };
 
-        this.clear = function() {
+        this.clear = function () {
             audioData.clear();
         };
 
+        // Resample the recorded data to the desired sample rate
         function downsampleBuffer(buffer, inputSampleRate, outputSampleRate) {
             if (outputSampleRate === inputSampleRate) {
                 return buffer;
@@ -226,12 +347,14 @@
             return result;
         }
 
-        recorder.onaudioprocess = function(e) {
+        recorder.onaudioprocess = function (e) {
             console.log('onaudioprocess called');
+            //重采样后加入缓冲区
             var resampledData = downsampleBuffer(e.inputBuffer.getChannelData(0), inputSampleRate, outputSampleRate);
             audioData.input(resampledData);
         };
     };
 
 </script>
+
 </html>
