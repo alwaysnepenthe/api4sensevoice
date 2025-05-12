@@ -71,12 +71,14 @@ def translate_text(text,src_lang,tgt_lang):
         print(f"Error in translate_text function: {e}")
         return text
     
-def main():
-    text = "Bonjour"
+ #按照目标语言进行文本翻译   
+def translate_tgt(text,tgt_lang):
     src_lang = lang_reco(text)
-    tgt_lang = "zho_Hans"
     translated_text = translate_text(text, src_lang, tgt_lang)
     print(f"Translated text: {translated_text}")
 
 if __name__ == "__main__":
-    main()
+    #用户自定义输入文本、
+    text = input("请输入文本：")
+    tgt_lang = input("请输入目标语言：")
+    translate_tgt(text,tgt_lang)
